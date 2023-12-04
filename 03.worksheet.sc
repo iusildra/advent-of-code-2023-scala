@@ -1,18 +1,22 @@
-import scala.io.Source
-import scala.util.Using
 import scala.util.matching.Regex.Match
 import java.nio.file.Path
 import java.nio.file.Files
 import scala.jdk.CollectionConverters.*
 
+val source = Files
+  .readString:
+    Path.of:
+      "/home/lucasn/Projects/advent-of-code-2023-scala/inputs/day3.txt"
+
+def part1: Unit =
+  println(s"The solution is ${part1(source)}")
+
+def part2: Unit =
+  println(s"The solution is ${part2(source)}")
+
 /* -------------------------------------------------------------------------- */
 /*                                   Global                                   */
 /* -------------------------------------------------------------------------- */
-val source = Files
-  .readAllLines:
-    Path.of:
-      "/home/lucasn/Projects/advent-of-code-2023-scala/inputs/day3.txt"
-  .asScala
 
 case class Coord(x: Int, y: Int):
   def within(start: Coord, end: Coord) =
@@ -29,9 +33,9 @@ case class Symbol(sym: String, pos: Coord):
 object IsInt:
   def unapply(in: Match): Option[Int] = in.matched.toIntOption
 
-def findPartsAndSymbols() =
+def findPartsAndSymbols(source: String) =
   val extractor = """(\d+)|[^.\d]""".r
-  source.zipWithIndex.flatMap: (line, i) =>
+  source.split("\n").zipWithIndex.flatMap: (line, i) =>
     extractor
       .findAllMatchIn(line)
       .map:
@@ -42,8 +46,8 @@ def findPartsAndSymbols() =
 /*                                   Part I                                   */
 /* -------------------------------------------------------------------------- */
 
-def part1 =
-  val all = findPartsAndSymbols()
+def part1(input: String) =
+  val all = findPartsAndSymbols(input)
   val symbols = all.collect { case s: Symbol => s }
   all
     .collect:
@@ -56,8 +60,8 @@ def part1 =
 /* -------------------------------------------------------------------------- */
 case class Gear(part: PartNumber, symbol: Symbol)
 
-def part2 =
-  val all = findPartsAndSymbols()
+def part2(input: String) =
+  val all = findPartsAndSymbols(input)
   val symbols = all.collect { case s: Symbol => s }
   all
     .flatMap:
@@ -71,5 +75,5 @@ def part2 =
     .filter(_._2.length == 2)
     .foldLeft(0) { _ + _._2.product }
 
-part1
-part2
+part1(source)
+part2(source)

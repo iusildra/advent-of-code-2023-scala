@@ -1,3 +1,5 @@
+import scala.io.Source
+import scala.util.Using
 import scala.util.matching.Regex.Match
 import java.nio.file.Path
 import java.nio.file.Files
@@ -19,9 +21,9 @@ case class Coord(x: Int, y: Int):
     else true
 case class PartNumber(value: Int, start: Coord, end: Coord)
 case class Symbol(sym: String, pos: Coord):
-  def neighborOf(start: Coord, end: Coord) = pos.within(
-    Coord(start.x - 1, start.y - 1),
-    Coord(end.x + 1, end.y + 1)
+  def neighborOf(number: PartNumber) = pos.within(
+    Coord(number.start.x - 1, number.start.y - 1),
+    Coord(number.end.x + 1, number.end.y + 1)
   )
 
 object IsInt:
@@ -45,7 +47,7 @@ def part1 =
   val symbols = all.collect { case s: Symbol => s }
   all
     .collect:
-      case n: PartNumber if symbols.exists(_.neighborOf(n.start, n.end)) =>
+      case n: PartNumber if symbols.exists(_.neighborOf(n)) =>
         n.value
     .sum
 
@@ -61,10 +63,13 @@ def part2 =
     .flatMap:
       case n: PartNumber =>
         symbols
-          .find(_.neighborOf(n.start, n.end))
+          .find(_.neighborOf(n))
           .filter(_.sym == "*")
           .map(Gear(n, _))
       case _ => None
     .groupMap(_.symbol)(_.part.value)
     .filter(_._2.length == 2)
     .foldLeft(0) { _ + _._2.product }
+
+part1
+part2

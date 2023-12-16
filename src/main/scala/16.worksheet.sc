@@ -1,3 +1,4 @@
+import scala.annotation.tailrec
 import scala.collection.immutable.Queue
 import scala.collection.mutable.HashMap
 import scala.collection.mutable.ListBuffer
@@ -22,27 +23,12 @@ def part2: Unit =
 /* -------------------------------------------------------------------------- */
 enum Direction:
   case Up, Right, Down, Left
-type MirrorDirection = Direction
-type SplitterDirection = Direction | (Direction, Direction)
 
 case class Coord(x: Int, y: Int)
 
-enum Symbol:
-  case Slash, Backslash, Pipe, Dash
-object Symbol:
-  def fromChar(char: Char) =
-    char match
-      case '/'  => Slash
-      case '\\' => Backslash
-      case '|'  => Pipe
-      case '-'  => Dash
-
-sealed abstract class Element[T]:
+sealed abstract class Element:
   val pos: Coord
-  def name: Char
-  def nextDirection(comingFrom: Direction): T
-  def pathTo(other: Element[?]): Seq[Coord] =
-    pathTo(other.pos)
+  def nextDirection(comingFrom: Direction): List[Direction]
   def pathTo(coord: Coord): Seq[Coord] =
     if pos.x == coord.x then
       if pos.y < coord.y then (pos.y to coord.y).map(Coord(pos.x, _))
@@ -50,85 +36,67 @@ sealed abstract class Element[T]:
     else if (pos.x < coord.x) then (pos.x to coord.x).map(Coord(_, pos.y))
     else (coord.x to pos.x).map(Coord(_, pos.y))
 
-abstract class Mirror(symbol: Symbol, pos: Coord)
-    extends Element[MirrorDirection]
-case class SlashMirror(pos: Coord) extends Mirror(Symbol.Slash, pos):
-  def name: Char = '/'
-  def nextDirection(goingTo: Direction): MirrorDirection =
-    goingTo match
-      case Direction.Up    => Direction.Right
-      case Direction.Left  => Direction.Down
-      case Direction.Right => Direction.Up
-      case Direction.Down  => Direction.Left
-
-case class BackslashMirror(pos: Coord) extends Mirror(Symbol.Backslash, pos):
-  def name: Char = '\\'
-  def nextDirection(goingTo: Direction): MirrorDirection =
-    goingTo match
-      case Direction.Up    => Direction.Left
-      case Direction.Right => Direction.Down
-      case Direction.Down  => Direction.Right
-      case Direction.Left  => Direction.Up
-
-object Mirror:
+object Element:
   def apply(sym: Char, x: Int, y: Int) =
-    Symbol.fromChar(sym) match
-      case Symbol.Backslash => BackslashMirror(Coord(x, y))
-      case Symbol.Slash     => SlashMirror(Coord(x, y))
-      case _                => throw new IllegalArgumentException
+    sym match
+      case '\\' => BackslashMirror(Coord(x, y))
+      case '/'  => SlashMirror(Coord(x, y))
+      case '|'  => VSplitter(Coord(x, y))
+      case '-'  => HSplitter(Coord(x, y))
+      case _    => throw new IllegalArgumentException
 
-abstract class Splitter(pos: Coord) extends Element[SplitterDirection]
-case class VSplitter(pos: Coord) extends Splitter(pos):
-  def name: Char = '|'
-  def nextDirection(goingTo: Direction): SplitterDirection =
+case class SlashMirror(override val pos: Coord) extends Element:
+  def nextDirection(goingTo: Direction) =
     goingTo match
-      case d @ (Direction.Up | Direction.Down) => d
-      case _                                   => (Direction.Up, Direction.Down)
-case class HSplitter(pos: Coord) extends Splitter(pos):
-  def name: Char = '-'
-  def nextDirection(comingFrom: Direction): SplitterDirection =
+      case Direction.Up    => List(Direction.Right)
+      case Direction.Left  => List(Direction.Down)
+      case Direction.Right => List(Direction.Up)
+      case Direction.Down  => List(Direction.Left)
+
+case class BackslashMirror(override val pos: Coord) extends Element:
+  def nextDirection(goingTo: Direction) =
+    goingTo match
+      case Direction.Up    => List(Direction.Left)
+      case Direction.Right => List(Direction.Down)
+      case Direction.Down  => List(Direction.Right)
+      case Direction.Left  => List(Direction.Up)
+
+case class VSplitter(pos: Coord) extends Element:
+  def nextDirection(goingTo: Direction) =
+    goingTo match
+      case d @ (Direction.Up | Direction.Down) => List(d)
+      case _ => List(Direction.Up, Direction.Down)
+case class HSplitter(pos: Coord) extends Element:
+  def nextDirection(comingFrom: Direction) =
     comingFrom match
-      case d @ (Direction.Left | Direction.Left) => d
-      case _ => (Direction.Left, Direction.Right)
+      case d @ (Direction.Left | Direction.Left) => List(d)
+      case _ => List(Direction.Left, Direction.Right)
 
-object Splitter:
-  def apply(sym: Char, x: Int, y: Int) =
-    Symbol.fromChar(sym) match
-      case Symbol.Pipe => VSplitter(Coord(x, y))
-      case Symbol.Dash => HSplitter(Coord(x, y))
-      case _           => throw new IllegalArgumentException
-
-case class Empty(pos: Coord) extends Element[Nothing]:
-  def name: Char = '.'
+case class Empty(pos: Coord) extends Element:
   def nextDirection(comingFrom: Direction): Nothing =
     throw new UnsupportedOperationException
 
-def findElements(source: Array[String]): Seq[Seq[Element[?]]] =
+def findElements(source: Array[String]) =
   source.zipWithIndex
     .map: (line, y) =>
       line.zipWithIndex
         .filter(_._1 != '.')
-        .map: (sym, x) =>
-          sym match
-            case '/' | '\\' => Mirror(sym, x, y)
-            case '-' | '|'  => Splitter(sym, x, y)
-        .toSeq
-    .toSeq
+        .map { (sym, x) => Element(sym, x, y) }
 
 def solution(input: Array[String], origin: Coord, dir: Direction) =
   val elements = findElements(input)
   val elementsByRow = elements.flatten.groupBy(_.pos.y)
   val elementsByColumn = elements.flatten.groupBy(_.pos.x)
-  def minY(x: Int) = elementsByColumn(x)(0).pos.y
-  def maxY(x: Int) = elementsByColumn(x).last.pos.y
-  def minX(y: Int) = elementsByRow(y)(0).pos.x
-  def maxX(y: Int) = elementsByRow(y).last.pos.x
+  val minY = elementsByColumn.map((k, v) => (k, v(0).pos.y))
+  val maxY = elementsByColumn.map((k, v) => (k, v.last.pos.y))
+  val minX = elementsByRow.map((k, v) => (k, v(0).pos.x))
+  val maxX = elementsByRow.map((k, v) => (k, v.last.pos.x))
   val activated = Array.fill(input.length)(Array.fill(input(0).length())(false))
-  var memo = Set.empty[(Coord, Coord)]
+  // val memo = Set.empty[(Coord, Coord)]
   def findNext(
-      elem: Element[?],
+      elem: Element,
       goingTo: Direction
-  ): Element[?] =
+  ): Element =
     goingTo match
       case Direction.Left if elem.pos.x > minX(elem.pos.y) =>
         val byRow = elementsByRow(elem.pos.y)
@@ -151,62 +119,45 @@ def solution(input: Array[String], origin: Coord, dir: Direction) =
       case Direction.Down =>
         Empty(Coord(elem.pos.x, input.length - 1))
 
-  def activate(
-      from: Element[?],
-      to: Coord
-  ) =
+  def activate(from: Element, to: Coord) =
     from
       .pathTo(to)
       .foreach:
         case Coord(x, y) => activated(y)(x) = true
 
-  def follow(
-      current: Element[?],
-      newDir: Direction,
-      rest: Queue[(Element[?], Direction)]
-  ) =
-    val followup = findNext(current, newDir)
-    if (memo.contains((current.pos, followup.pos))) then loop(rest)
-    else
-      memo += ((current.pos, followup.pos))
-      activate(current, followup.pos)
-      followup match
-        case Empty(pos) => loop(rest)
-        case next @ (_: Mirror | _: Splitter) =>
-          loop(rest.enqueue((next, newDir)))
-
-  def loop(elems: Queue[(Element[?], Direction)]): Unit =
+  @tailrec
+  def loop(
+      elems: Queue[(Element, Direction)],
+      memo: Set[(Coord, Coord)]
+  ): Unit =
     if elems.isEmpty then ()
     else
       elems.dequeue match
         case ((_: Empty, _), _) => throw new UnsupportedOperationException
-        case ((m: Mirror, goingTo), rest) =>
-          val newDir = m.nextDirection(goingTo)
-          follow(m, newDir, rest)
-        case ((s: Splitter, goingTo), rest) =>
-          s.nextDirection(goingTo) match
-            case d: Direction => follow(s, d, rest)
-            case (d1: Direction, d2: Direction) =>
-              val list = List(d1, d2)
-              val queue = list.foldLeft(rest):(acc, dir) =>
-                val followup = findNext(s, dir)
-                if (memo.contains((s.pos, followup.pos))) then acc
+        case ((elem, goingTo), rest) =>
+          val nextElems =
+            elem
+              .nextDirection(goingTo)
+              .foldLeft((rest, memo)): (acc, dir) =>
+                val followup = findNext(elem, dir)
+                if (memo.contains((elem.pos, followup.pos))) then acc
                 else
-                  memo += ((s.pos, followup.pos))
-                  activate(s, followup.pos)
+                  activate(elem, followup.pos)
                   followup match
-                    case Empty(pos) => acc
-                    case next @ (_: Mirror | _: Splitter) =>
-                      acc.enqueue(next -> dir)
-              loop(queue)
+                    case Empty(pos) => (acc._1, acc._2 + ((elem.pos, pos)))
+                    case next =>
+                      (acc._1.enqueue(next -> dir), acc._2 + ((elem.pos, followup.pos)))
+          loop(nextElems._1, nextElems._2)
+  end loop
+
   val starting = dir match
     case Direction.Right => elementsByRow(origin.y)(0)
-    case Direction.Down => elementsByColumn(origin.x)(0)
-    case Direction.Left => elementsByRow(origin.y).last
-    case Direction.Up => elementsByColumn(origin.x).last
-  
+    case Direction.Down  => elementsByColumn(origin.x)(0)
+    case Direction.Left  => elementsByRow(origin.y).last
+    case Direction.Up    => elementsByColumn(origin.x).last
+
   activate(starting, origin)
-  loop(Queue(starting -> dir))
+  loop(Queue(starting -> dir), Set())
 
   // println(activated.zipWithIndex.map((line, i) => f"$i%03d " + line.map(if _ then '#' else '.').mkString).mkString("\n"))
   activated.flatten.count(identity)
@@ -223,15 +174,17 @@ part1
 /* -------------------------------------------------------------------------- */
 def part2(input: String) =
   val lines = input.split("\n")
-  val left = (0 until lines.length).map(i => (Coord(0, i), Direction.Right))
-  val right = (0 until lines.length).map(i =>
-    (Coord(lines(0).length() - 1, i), Direction.Left)
-  )
-  val top = (0 until lines(0).length()).map(i => (Coord(i, 0), Direction.Down))
-  val bottom = (0 until lines(0).length()).map(i =>
-    (Coord(i, lines.length - 1), Direction.Up)
-  )
-  val borders = left ++ right ++ top ++ bottom
+  val horizontal = (0 until lines.length).flatMap: i =>
+    List(
+      (Coord(0, i), Direction.Right),
+      (Coord(lines(0).length() - 1, i), Direction.Left)
+    )
+  val vertical = (0 until lines(0).length()).flatMap: i =>
+    List(
+      (Coord(i, 0), Direction.Down),
+      (Coord(i, lines.length - 1), Direction.Up)
+    )
+  val borders = horizontal ++ vertical
   borders.map((coord, dir) => solution(lines, coord, dir)).max
 
 part2

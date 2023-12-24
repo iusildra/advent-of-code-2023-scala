@@ -92,7 +92,6 @@ def solution(input: Array[String], origin: Coord, dir: Direction) =
   val minX = elementsByRow.map((k, v) => (k, v(0).pos.x))
   val maxX = elementsByRow.map((k, v) => (k, v.last.pos.x))
   val activated = Array.fill(input.length)(Array.fill(input(0).length())(false))
-  // val memo = Set.empty[(Coord, Coord)]
   def findNext(
       elem: Element,
       goingTo: Direction
